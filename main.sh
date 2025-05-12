@@ -1,5 +1,5 @@
-
 #Fonction pour afficher les infos du script
+
 function display_banner() {
     echo -e "${BLUE}${BOLD}"
     echo "  ███████╗██╗   ██╗███████╗ ██████╗ ██╗   ██╗ █████╗ ██████╗ ██████╗ "
@@ -16,7 +16,9 @@ function display_banner() {
 }
 
 
+
 #Les couleurs de text, niveau de risque
+
 RED='\033[0;31m'
 YELLOW='\033[0;33m'
 GREEN='\033[0;32m'
@@ -24,6 +26,9 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+
+
+#Configuration 
 
 FORK_MODE=false
 THREAD_MODE=false
@@ -34,7 +39,10 @@ SESSION_LOG="${OUTPUT_DIR}/sysguard-${TIMESTAMP}.log"
 ALERTS_LOG="${OUTPUT_DIR}/alerts-${TIMESTAMP}.log"
 
 
+
+
 #Fonction pour afficher un tutorial du script
+
 function display_help() {
     echo -e "${BOLD}Usage:${NC} $0 [options] [log_file1] [log_file2] ..."
     echo ""
