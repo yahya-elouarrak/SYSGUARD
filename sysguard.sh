@@ -1,7 +1,7 @@
 #Fonction pour afficher les infos du script
 
 function display_banner() {
-    echo -e "${BLUE}${BOLD}"
+    echo -e "${GREEN}${BOLD}"
     echo "  ███████╗██╗   ██╗███████╗ ██████╗ ██╗   ██╗ █████╗ ██████╗ ██████╗ "
     echo "  ██╔════╝╚██╗ ██╔╝██╔════╝██╔════╝ ██║   ██║██╔══██╗██╔══██╗██╔══██╗"
     echo "  ███████╗ ╚████╔╝ ███████╗██║  ███╗██║   ██║███████║██████╔╝██║  ██║"
@@ -35,7 +35,7 @@ NC='\033[0m'
 FORK_MODE=false
 THREAD_MODE=false
 LOG_FILES=()
-OUTPUT_DIR="/var/log/sysguard"
+OUTPUT_DIR="$(pwd)/sysguard"
 TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
 SESSION_LOG="${OUTPUT_DIR}/sysguard-${TIMESTAMP}.log"
 ALERTS_LOG="${OUTPUT_DIR}/alerts-${TIMESTAMP}.log"
@@ -52,7 +52,7 @@ function display_help() {
     echo "  -h, --help            Display this help message"
     echo "  -f, --fork            Fork to analyze multiple files in parallel"
     echo "  -t, --thread          Spawn a thread per detection rule"
-    echo "  -o, --output DIR      Specify output directory (default: /var/log/sysguard)"
+    echo "  -o, --output DIR      Specify output directory (default: current-directory/sysguard)"
     echo ""
     echo -e "${BOLD}Examples:${NC}"
     echo "  $0 /var/log/auth.log"
@@ -489,6 +489,7 @@ function main() {
     log_message "INFO" "Starting SYSGUARD with parameters: FORK_MODE=$FORK_MODE, THREAD_MODE=$THREAD_MODE"
     log_message "INFO" "Log files to analyze: ${LOG_FILES[*]}"
     
+    #Fork mode
     if [[ "$FORK_MODE" = true ]]; then
         # Process each log file in parallel
         for log_file in "${LOG_FILES[@]}"; do
