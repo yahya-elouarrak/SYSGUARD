@@ -53,14 +53,14 @@ NC='\033[0m'
 
 
 #Configuration 
-#Si aucun fichier log n'est spécifié, le script vérifie par défaut /var/log/auth.log et /var/log/syslog.
-#si le path de sortie n'est pas spécifié, par défaut la sortie est stocké dans /var/log/sysguard
+#Si aucun fichier log n'est spécifié, le script vérifie par défaut /var/log/auth.log et /var/log/syslog.log
+#si le path de sortie n'est pas spécifié, par défaut la sortie est stocké dans /sysguard_reports
 
 FORK_MODE=false
 THREAD_MODE=false
 LOG_FILES=()
 OUTPUT_DIR="$(pwd)/sysguard_reports"
-TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
+TIMESTAMP=$(date +"%Y%dm%-%H%M%S")
 SESSION_LOG="${OUTPUT_DIR}/sysguard-${TIMESTAMP}.log"
 ALERTS_LOG="${OUTPUT_DIR}/alerts-${TIMESTAMP}.log"
 
@@ -178,7 +178,7 @@ function record_alert() {
 
 
 
-#Fonction pour la Configuration des options (-h -t -f -o)
+#Fonction pour la Configuration des options (-h -t -f -o -m -e)
 
 function parse_arguments() {
     while [[ $# -gt 0 ]]; do
@@ -249,6 +249,8 @@ function parse_arguments() {
             echo -e "${RED}${BOLD}Error:${NC} No log files found. Please specify log files."
             exit 1
         fi
+        ###################################
+
     fi
 }
 
