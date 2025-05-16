@@ -1,3 +1,4 @@
+#!/bin/bash
 #Fonction pour afficher les infos du script
 
 function display_banner() {
@@ -8,11 +9,34 @@ function display_banner() {
     echo "  ╚════██║  ╚██╔╝  ╚════██║██║   ██║██║   ██║██╔══██║██╔══██╗██║  ██║"
     echo "  ███████║   ██║   ███████║╚██████╔╝╚██████╔╝██║  ██║██║  ██║██████╔╝"
     echo "  ╚══════╝   ╚═╝   ╚══════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ "
-    echo -e "${NC}"
-    echo -e "${BOLD}SYSGUARD: Syslog & Suspicious Activity Analyzer${NC}"
-    echo -e "${BOLD}Authors: y4hya - y0ussef - wiss4l ${NC}"
-    echo -e "${BOLD}Version: 1.0${NC}"
+    echo -e "-----------------------------------------------------------------"
+    echo -e "${BOLD}{GREEN}SYSGUARD: Syslog & Suspicious Activity Analyzer"
+    echo -e "${BOLD}{GREEN}Authors: y4hya - y0ussef - wiss4l"
+    echo -e "${BOLD}{GREEN}Version: 1.0"
     echo ""
+}
+
+
+
+#Verifier les packages necessaires
+
+function check_dependencies() {
+    log_message "INFO" "Checking dependencies"
+    
+    # Check for xlsx_writer.py dependency
+    if ! command -v python3 &> /dev/null; then
+        echo -e "${RED}${BOLD}Error:${NC} Python3 is required but not installed."
+        echo "Please install Python3 and required modules with:"
+        echo "  sudo apt-get install python3 python3-pip"
+        echo "  pip3 install openpyxl pandas"
+        exit 1
+    fi
+    
+    # Check for mail dependencies
+    if ! command -v mail &> /dev/null; then
+        echo -e "${YELLOW}${BOLD}Warning:${NC} 'mail' command not found. Email alerts will not work."
+        echo "To install mail capability, run: sudo apt-get install mailutils"
+    fi
 }
 
 
@@ -35,10 +59,16 @@ NC='\033[0m'
 FORK_MODE=false
 THREAD_MODE=false
 LOG_FILES=()
-OUTPUT_DIR="$(pwd)/sysguard"
+OUTPUT_DIR="$(pwd)/sysguard_reports"
 TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
 SESSION_LOG="${OUTPUT_DIR}/sysguard-${TIMESTAMP}.log"
 ALERTS_LOG="${OUTPUT_DIR}/alerts-${TIMESTAMP}.log"
+
+EMAIL_MODE=false
+EMAIL_RECIPIENT=""
+EMAIL_SUBJECT="[SYSGUARD] Security Alert Report"
+EMAIL_HIGH_ONLY=true  # Set to true to only send emails for HIGH severity alerts
+EXCEL_MODE=false
 
 
 
@@ -46,18 +76,22 @@ ALERTS_LOG="${OUTPUT_DIR}/alerts-${TIMESTAMP}.log"
 #Fonction pour afficher un tutorial du script
 
 function display_help() {
-    echo -e "${BOLD}Usage:${NC} $0 [options] [log_file1] [log_file2] ..."
+    echo -e "${BOLD}${YELLOW}Usage:${NC} $0 [options] [log_file1] [log_file2] ..."
     echo ""
     echo -e "${BOLD}Options:${NC}"
     echo "  -h, --help            Display this help message"
     echo "  -f, --fork            Fork to analyze multiple files in parallel"
     echo "  -t, --thread          Spawn a thread per detection rule"
     echo "  -o, --output DIR      Specify output directory (default: current-directory/sysguard)"
+    echo "  -e, --excel           Generate Excel report"
+    echo "  -m, --email EMAIL     Send alert notifications to specified email"
+    echo "  --email-all           Send all alerts via email (default: HIGH severity only)"
     echo ""
     echo -e "${BOLD}Examples:${NC}"
     echo "  $0 /var/log/auth.log"
     echo "  $0 -f /var/log/auth.log /var/log/syslog"
     echo "  $0 -t -o /tmp/sysguard_output /var/log/auth.log"
+    echo "  $0 -e -m admin@example.com /var/log/auth.log"
     echo ""
     echo -e "${BOLD}Default log files if none specified:${NC}"
     echo "  /var/log/auth.log"
@@ -135,6 +169,11 @@ function record_alert() {
     echo -e "${color}[ALERT:$severity] $message${NC}"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ALERT:$severity] [$source] $message" >> "$ALERTS_LOG"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ALERT:$severity] [$source] $message" >> "$SESSION_LOG"
+    
+    # Send email alert if enabled
+    if [[ "$EMAIL_MODE" = true ]]; then
+        send_email_alert "$severity" "$source" "$message"
+    fi
 }
 
 
@@ -165,6 +204,24 @@ function parse_arguments() {
                     echo -e "${RED}${BOLD}Error:${NC} Output directory not specified."
                     exit 1
                 fi
+                ;;
+            -e|--excel)
+                EXCEL_MODE=true
+                shift
+                ;;
+            -m|--email)
+                EMAIL_MODE=true
+                if [[ -n "$2" && "$2" != -* ]]; then
+                    EMAIL_RECIPIENT="$2"
+                    shift 2
+                else
+                    echo -e "${RED}${BOLD}Error:${NC} Email recipient not specified."
+                    exit 1
+                fi
+                ;;
+            --email-all)
+                EMAIL_HIGH_ONLY=false
+                shift
                 ;;
             *)
                 if [[ -f "$1" ]]; then
@@ -426,7 +483,7 @@ function generate_summary() {
     local high_alerts=$(grep -c "\[ALERT:HIGH\]" "$ALERTS_LOG" || echo "0")
     local medium_alerts=$(grep -c "\[ALERT:MEDIUM\]" "$ALERTS_LOG" || echo "0")
     local low_alerts=$(grep -c "\[ALERT:LOW\]" "$ALERTS_LOG" || echo "0")
-    local total_alerts=$((high_alerts+medium_alerts+low_alerts))
+    local total_alerts=$(high_alerts+medium_alerts+low_alerts)
     
     echo "=== ALERT SUMMARY ===" >> "$summary_file"
     echo "Total alerts: $total_alerts" >> "$summary_file"
@@ -478,16 +535,220 @@ function generate_summary() {
 
 
 
+#Rapport excel
+
+function create_excel_converter() {
+    local python_script="xlsx_writer.py"
+    
+    cat > "$python_script" << 'EOL'
+#!/usr/bin/env python3
+import sys
+import pandas as pd
+import re
+from datetime import datetime
+
+def parse_alert_line(line):
+    # Parse typical alert line format
+    match = re.match(r'\[(.*?)\] \[ALERT:(.*?)\] \[(.*?)\] (.*)', line)
+    if match:
+        timestamp, severity, source, message = match.groups()
+        return {
+            'Timestamp': timestamp,
+            'Severity': severity,
+            'Source': source,
+            'Message': message
+        }
+    return None
+
+def parse_summary_section(content, section_name):
+    # Extract data from summary sections
+    section_pattern = f"=== {section_name} ===\n(.*?)(?:\n\n|\n===|$)"
+    match = re.search(section_pattern, content, re.DOTALL)
+    if match:
+        return match.group(1).strip().split('\n')
+    return []
+
+def txt_to_excel(alert_file, summary_file, output_file):
+    # Read alert data
+    with open(alert_file, 'r') as file:
+        alert_lines = file.readlines()[1:]  # Skip the header line
+    
+    # Parse alert data
+    alerts = []
+    for line in alert_lines:
+        line = line.strip()
+        if line:
+            alert_data = parse_alert_line(line)
+            if alert_data:
+                alerts.append(alert_data)
+    
+    # Read summary data
+    with open(summary_file, 'r') as file:
+        summary_content = file.read()
+    
+    # Create Excel writer
+    with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
+        # Create alerts sheet
+        if alerts:
+            alerts_df = pd.DataFrame(alerts)
+            alerts_df.to_excel(writer, sheet_name='Alerts', index=False)
+        
+        # Create summary sheet
+        summary_data = []
+        summary_data.append(['Generated on', re.search(r'Generated on: (.*)', summary_content).group(1)])
+        
+        # Extract analyzed log files
+        log_files = re.search(r'Log files analyzed: (.*)', summary_content).group(1)
+        summary_data.append(['Log files analyzed', log_files])
+        
+        # Extract alert counts
+        alert_pattern = r'Total alerts: (\d+)\n\s+HIGH severity: (\d+)\n\s+MEDIUM severity: (\d+)\n\s+LOW severity: (\d+)'
+        alert_match = re.search(alert_pattern, summary_content)
+        if alert_match:
+            total, high, medium, low = alert_match.groups()
+            summary_data.append(['Total alerts', total])
+            summary_data.append(['HIGH severity', high])
+            summary_data.append(['MEDIUM severity', medium])
+            summary_data.append(['LOW severity', low])
+        
+        summary_df = pd.DataFrame(summary_data, columns=['Metric', 'Value'])
+        summary_df.to_excel(writer, sheet_name='Summary', index=False)
+        
+        # Create IPs sheet
+        ips = parse_summary_section(summary_content, "SUSPICIOUS IPs DETECTED")
+        if ips:
+            ips_df = pd.DataFrame(ips, columns=['IP Address'])
+            ips_df.to_excel(writer, sheet_name='Suspicious IPs', index=False)
+        
+        # Create Users sheet
+        users = parse_summary_section(summary_content, "USERS INVOLVED IN ALERTS")
+        if users:
+            users_df = pd.DataFrame(users, columns=['Username'])
+            users_df.to_excel(writer, sheet_name='Suspicious Users', index=False)
+        
+        # Create High Alerts sheet
+        high_alerts = parse_summary_section(summary_content, "HIGH SEVERITY ALERTS")
+        if high_alerts:
+            high_alerts_df = pd.DataFrame(high_alerts, columns=['Alert Description'])
+            high_alerts_df.to_excel(writer, sheet_name='High Severity Alerts', index=False)
+
+if __name__ == "__main__":
+    if len(sys.argv) != 4:
+        print("Usage: python3 xlsx_writer.py <alerts_log> <summary_file> <output_xlsx>")
+        sys.exit(1)
+    
+    alert_file = sys.argv[1]
+    summary_file = sys.argv[2]
+    output_file = sys.argv[3]
+    
+    txt_to_excel(alert_file, summary_file, output_file)
+EOL
+
+    chmod +x "$python_script"
+    log_message "INFO" "Created Excel converter script at $python_script"
+}
+
+
+#Fonction pour generer le rapport excel
+
+function generate_excel_report() {
+    local summary_file="${OUTPUT_DIR}/sysguard-summary-${TIMESTAMP}.txt"
+    local excel_file="${OUTPUT_DIR}/sysguard-report-${TIMESTAMP}.xlsx"
+    
+    log_message "INFO" "Generating Excel report"
+    
+    # Ensure Python script exists
+    create_excel_converter
+    
+    # Run Python script to generate Excel file
+    if python3 "xlsx_writer.py" "$ALERTS_LOG" "$summary_file" "$excel_file"; then
+        log_message "INFO" "Excel report generated: $excel_file"
+        echo -e "${GREEN}${BOLD}Excel report generated:${NC} $excel_file"
+        
+        # Include Excel report in email if both are enabled
+        if [[ "$EMAIL_MODE" = true ]]; then
+            # Check if we can send attachments
+            if command -v mutt &> /dev/null; then
+                local email_body="
+SYSGUARD Security Analysis Report
+================================
+Time: $(date)
+Log files analyzed: ${LOG_FILES[*]}
+
+The complete security analysis report is attached.
+This is an automated message from SYSGUARD security monitoring tool.
+"
+                echo "$email_body" | mutt -s "$EMAIL_SUBJECT - Complete Report" -a "$excel_file" -- "$EMAIL_RECIPIENT"
+                log_message "INFO" "Excel report emailed to $EMAIL_RECIPIENT"
+            else
+                log_message "WARNING" "Cannot email Excel report: 'mutt' command not found"
+                echo -e "${YELLOW}${BOLD}Warning:${NC} Cannot email Excel report. Install 'mutt' for attachment support."
+            fi
+        fi
+    else
+        log_message "ERROR" "Failed to generate Excel report"
+        echo -e "${RED}${BOLD}Error:${NC} Failed to generate Excel report. Check Python dependencies."
+    fi
+}
+
+
+
+#Fonction pour envoyer un mail au cas d'une alerte
+
+function send_email_alert() {
+    local severity="$1"
+    local source="$2"
+    local message="$3"
+    
+    # Skip if not HIGH severity and EMAIL_HIGH_ONLY is true
+    if [[ "$EMAIL_HIGH_ONLY" = true && "$severity" != "HIGH" ]]; then
+        return
+    fi
+    
+    # Check if mail command exists
+    if ! command -v mail &> /dev/null; then
+        log_message "WARNING" "Cannot send email alert: 'mail' command not found"
+        return
+    fi
+    
+    # Check if email is configured
+    if [[ -z "$EMAIL_RECIPIENT" ]]; then
+        return
+    fi
+    
+    local email_body="
+SYSGUARD Security Alert
+=======================
+Severity: $severity
+Source: $source
+Time: $(date)
+Message: $message
+
+This is an automated message from SYSGUARD security monitoring tool.
+"
+    
+    # Send email
+    echo "$email_body" | mail -s "[$severity] $EMAIL_SUBJECT" "$EMAIL_RECIPIENT"
+    log_message "INFO" "Email alert sent to $EMAIL_RECIPIENT (Severity: $severity)"
+}
+
+
+
 #Fonction principale
 
 function main() {
     display_banner
     check_root
+    check_dependencies  # Add this new function call
     parse_arguments "$@"
     init_output_dir
     
-    log_message "INFO" "Starting SYSGUARD with parameters: FORK_MODE=$FORK_MODE, THREAD_MODE=$THREAD_MODE"
+    log_message "INFO" "Starting SYSGUARD with parameters: FORK_MODE=$FORK_MODE, THREAD_MODE=$THREAD_MODE, EXCEL_MODE=$EXCEL_MODE, EMAIL_MODE=$EMAIL_MODE"
     log_message "INFO" "Log files to analyze: ${LOG_FILES[*]}"
+    
+    if [[ "$EMAIL_MODE" = true ]]; then
+        log_message "INFO" "Email alerts will be sent to: $EMAIL_RECIPIENT"
+    fi
     
     #Fork mode
     if [[ "$FORK_MODE" = true ]]; then
@@ -504,6 +765,11 @@ function main() {
     fi
     
     generate_summary
+    
+    # Generate Excel report if enabled
+    if [[ "$EXCEL_MODE" = true ]]; then
+        generate_excel_report
+    fi
     
     log_message "INFO" "SYSGUARD analysis completed"
     echo -e "${GREEN}${BOLD}SYSGUARD analysis completed.${NC}"
