@@ -143,7 +143,7 @@ function check_sudo_abuse() {
     ((current_count++))
     echo "$current_count" > "$sudo_track_file"
     if [[ $current_count -ge 3 ]]; then
-				muttconf
+		muttconf
         echo "HIGH" "SUDO_ABUSE" "Potential sudo abuse: failed attempts by user $username" "$source_file" | mutt -s "SYSGUARD ALERT !" -F "$TMP_MUTTRC" -- "$EMAIL_RECIPIENT"
         echo "0" > "$sudo_track_file"
     fi
