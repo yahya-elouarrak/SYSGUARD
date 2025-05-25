@@ -1,4 +1,9 @@
 #!/bin/bash
+source ./live_monitoring.sh
+
+#Clean up
+rm -r sysguard_reports
+
 #Fonction pour afficher les infos du script
 
 function display_banner() {
@@ -24,7 +29,7 @@ function install_packages() {
   echo -e "${BOLD}${GREEN}Starting installing required packages...${RESET}"
 
   # List of system packages to check and install
-  system_packages=(python3 python3-pip mailutils msmtp msmtp-mta mutt python3-pandas)
+  system_packages=(python3 python3-pip python3-pandas mutt)
   for pkg in "${system_packages[@]}"; do
     if dpkg -s "$pkg" &> /dev/null; then
       echo -e "${GREEN}Package $pkg is already installed. Skipping.${RESET}"
@@ -57,7 +62,7 @@ FORK_MODE=false
 THREAD_MODE=false
 LOG_FILES=()
 OUTPUT_DIR="$(pwd)/sysguard_reports"
-TIMESTAMP=$(date +"%Y-%m-%d___%H-%M-%S")
+TIMESTAMP=$(date +"%Y-%d-%m___%H-%M-%S")
 SESSION_LOG="${OUTPUT_DIR}/sysguard-${TIMESTAMP}.log"
 ALERTS_LOG="${OUTPUT_DIR}/alerts-${TIMESTAMP}.log"
 
@@ -67,6 +72,8 @@ EMAIL_SUBJECT="[SYSGUARD] Security Alert Report"
 EMAIL_HIGH_ONLY=true  # Set to true to only send emails for HIGH severity alerts
 EXCEL_MODE=false
 
+REALTIME_MODE=false
+REALTIME_INTERVAL=2
 
 
 
@@ -82,17 +89,18 @@ function display_help() {
     echo "  -o, --output DIR      Specify output directory (default: current-directory/sysguard)"
     echo "  -e, --excel           Generate Excel report"
     echo "  -m, --email EMAIL     Send alert notifications to specified email"
-    echo "  --email-all           Send all alerts via email (default: HIGH severity only)"
+    echo "  --realtime            Start real-time log monitoring"
+    echo "  --realtime-interval N Set real-time check interval in seconds (default: 2)"
     echo ""
     echo -e "${BOLD}Examples:${NC}"
     echo "  $0 /var/log/auth.log"
     echo "  $0 -f /var/log/auth.log /var/log/syslog"
     echo "  $0 -t -o /tmp/sysguard_output /var/log/auth.log"
     echo "  $0 -e -m admin@example.com /var/log/auth.log"
+    echo "  $0 --realtime -m admin@example.com"
     echo ""
     echo -e "${BOLD}Default log files if none specified:${NC}"
-    echo "  /var/log/auth.log"
-    echo "  /var/log/syslog"
+    echo "  /var/log/auth.log  &  /var/log/syslog"
     echo ""
 }
 
@@ -144,6 +152,7 @@ function log_message() {
     
     echo -e "${color}[$level] $message${NC}"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $message" >> "$SESSION_LOG"
+
 }
 
 
@@ -218,6 +227,19 @@ function parse_arguments() {
             --email-all)
                 EMAIL_HIGH_ONLY=false
                 shift
+                ;;
+            --realtime)
+                REALTIME_MODE=true
+                shift
+                ;;
+            --realtime-interval)
+                if [[ -n "$2" && "$2" != -* ]]; then
+                    REALTIME_INTERVAL="$2"
+                    shift 2
+                else
+                    echo -e "${RED}${BOLD}Error:${NC} Realtime interval not specified."
+                    exit 1
+                fi
                 ;;
             *)
                 if [[ -f "$1" ]]; then
@@ -470,23 +492,18 @@ function analyze_log_file() {
 #Generer un rapport
 
 function generate_summary() {
-    local summary_file="${OUTPUT_DIR}/sysguard-summary-${TIMESTAMP}.txt"
+    summary_file="${OUTPUT_DIR}/sysguard-summary-${TIMESTAMP}.txt"
     
     echo "=== SYSGUARD ANALYSIS SUMMARY ===" > "$summary_file"
     echo "Generated on: $(date)" >> "$summary_file"
+    echo "Log files analyzed: ${LOG_FILES[*]}" >> "$summary_file"
     echo "" >> "$summary_file"
     
     # Count alerts by severity
-    local high_alerts=$(grep -c "\[ALERT:HIGH\]" "$ALERTS_LOG")
-    local medium_alerts=$(grep -c "\[ALERT:MEDIUM\]" "$ALERTS_LOG")
-    local low_alerts=$(grep -c "\[ALERT:LOW\]" "$ALERTS_LOG")
-
-    # Default to 0 if grep fails
-    high_alerts=${high_alerts:-0}
-    medium_alerts=${medium_alerts:-0}
-    low_alerts=${low_alerts:-0}
-
-    local total_alerts=$((high_alerts+medium_alerts+low_alerts))
+    local high_alerts=$(grep -c "\[ALERT:HIGH\]" "$ALERTS_LOG" || echo "0")
+    local medium_alerts=$(grep -c "\[ALERT:MEDIUM\]" "$ALERTS_LOG" || echo "0")
+    local low_alerts=$(grep -c "\[ALERT:LOW\]" "$ALERTS_LOG" || echo "0")
+    local total_alerts=$(high_alerts+medium_alerts+low_alerts)
     
     echo "=== ALERT SUMMARY ===" >> "$summary_file"
     echo "Total alerts: $total_alerts" >> "$summary_file"
@@ -496,7 +513,7 @@ function generate_summary() {
     echo "" >> "$summary_file"
     
     # List all HIGH severity alerts
-    if [ "$high_alerts" -gt 0 ]; then
+    if [[ $high_alerts -gt 0 ]]; then
         echo "=== HIGH SEVERITY ALERTS ===" >> "$summary_file"
         grep "\[ALERT:HIGH\]" "$ALERTS_LOG" | sed 's/\[ALERT:HIGH\] //g' >> "$summary_file"
         echo "" >> "$summary_file"
@@ -517,7 +534,10 @@ function generate_summary() {
         echo "$suspicious_users" >> "$summary_file"
         echo "" >> "$summary_file"
     fi
-
+    
+    echo "Full logs available at:" >> "$summary_file"
+    echo "  Session log: $SESSION_LOG" >> "$summary_file"
+    echo "  Alerts log: $ALERTS_LOG" >> "$summary_file"
     
     echo -e "${GREEN}${BOLD}Summary report generated:${NC} $summary_file"
     
@@ -530,7 +550,7 @@ function generate_summary() {
         echo -e "${RED}${BOLD}HIGH SEVERITY ALERTS DETECTED!${NC} Check the summary report."
     fi
     
-    log_message "INFO" "Full report: $summary_file"
+    echo -e "Full report: $summary_file"
 }
 
 
@@ -651,16 +671,17 @@ EOL
 #Fonction pour generer le rapport excel
 
 function generate_excel_report() {
-    summary_file="${OUTPUT_DIR}/sysguard-summary-${TIMESTAMP}.txt"
+    local summary_file="${OUTPUT_DIR}/sysguard-summary-${TIMESTAMP}.txt"
     local excel_file="${OUTPUT_DIR}/sysguard-report-${TIMESTAMP}.xlsx"
     
+    log_message "INFO" "Generating Excel report"
     
     # Ensure Python script exists
     create_excel_converter
     
     # Run Python script to generate Excel file
     if python3 "xlsx_writer.py" "$ALERTS_LOG" "$summary_file" "$excel_file"; then
-        log_message "INFO" "Excel report generated: $excel_file"
+        echo -e "${GREEN}${BOLD}Excel report generated:${NC} $excel_file"
         
         
     else
@@ -687,8 +708,14 @@ function send_email_alert() {
     if [[ -z "$EMAIL_RECIPIENT" ]]; then
         return
     fi
+    muttconf
+}
 
-    TMP_MUTTRC=$(mktemp)
+
+
+#Mutt conf file
+function muttconf(){
+	TMP_MUTTRC=$(mktemp)
     cat > "$TMP_MUTTRC" <<EOF
 # SMTP settings
 set smtp_url = "smtps://vawzen88@gmail.com@smtp.gmail.com:465/"
@@ -712,10 +739,6 @@ EOF
 
 
 
-
-
-
-
 #Fonction principale
 
 function main() {
@@ -724,6 +747,15 @@ function main() {
     check_root
     parse_arguments "$@"
     init_output_dir
+
+    # REALTIME CHECK:
+    if [[ "$REALTIME_MODE" = true ]]; then
+        log_message "INFO" "Starting SYSGUARD in REAL-TIME mode"
+        
+        # Start real-time monitoring (signal handlers are set inside the function)
+        start_realtime_watcher
+        return 0
+    fi
     
     log_message "INFO" "Starting SYSGUARD with parameters: FORK_MODE=$FORK_MODE, THREAD_MODE=$THREAD_MODE, EXCEL_MODE=$EXCEL_MODE, EMAIL_MODE=$EMAIL_MODE"
     log_message "INFO" "Log files to analyze: ${LOG_FILES[*]}"
@@ -750,10 +782,10 @@ function main() {
     if [[ "$EXCEL_MODE" = true ]]; then
         generate_excel_report
     fi
-    echo "$summary_file"
+
     # Mail the alert
     if [[ "$EMAIL_MODE" = true ]]; then
-        send_email_alert
+        muttconf
         mutt -s "SYSGUARD ALERT !" -F "$TMP_MUTTRC" -- "$EMAIL_RECIPIENT" < "$summary_file"
 
         if [ $? -eq 0 ]; then
@@ -768,7 +800,7 @@ function main() {
     ## Clean up the temp files
     
     rm -f "$TMP_MUTTRC"
-    rm -f "xlsx_writer.py"
+    rm -f xlsx_writer.py
     
     log_message "INFO" "SYSGUARD analysis completed"
     echo "--------------------------------------------------------------------------------"
