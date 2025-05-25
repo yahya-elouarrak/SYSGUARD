@@ -18,27 +18,24 @@ function display_banner() {
 
 
 
-#Verifier les packages necessaires
+#Fonction pour l'Installation automatique des packages necessaires
 
-function check_dependencies() {
-    log_message "INFO" "Checking dependencies"
-    
-    # Check for xlsx_writer.py dependency
-    if ! command -v python3 &> /dev/null; then
-        echo -e "${RED}${BOLD}Error:${NC} Python3 is required but not installed."
-        echo "Please install Python3 and required modules with:"
-        echo "  sudo apt-get install python3 python3-pip"
-        echo "  pip3 install openpyxl pandas"
-        exit 1
+function install_packages() {
+  echo -e "${BOLD}${GREEN}Starting installing required packages...${RESET}"
+
+  # List of system packages to check and install
+  system_packages=(python3 python3-pip mailutils msmtp msmtp-mta mutt python3-pandas)
+  for pkg in "${system_packages[@]}"; do
+    if dpkg -s "$pkg" &> /dev/null; then
+      echo -e "${GREEN}Package $pkg is already installed. Skipping.${RESET}"
+    else
+      echo -e "${GREEN}Installing package $pkg...${RESET}"
+      sudo apt-get install -y "$pkg"
     fi
-    
-    # Check for mail dependencies
-    if ! command -v mail &> /dev/null; then
-        echo -e "${YELLOW}${BOLD}Warning:${NC} 'mail' command not found. Email alerts will not work."
-        echo "To install mail capability, run: sudo apt-get install mailutils"
-    fi
+    done
+
+  echo -e "${BOLD}${GREEN}Finished installing required packages!${RESET}"
 }
-
 
 
 #Les couleurs de text, niveau de risque
@@ -60,7 +57,7 @@ FORK_MODE=false
 THREAD_MODE=false
 LOG_FILES=()
 OUTPUT_DIR="$(pwd)/sysguard_reports"
-TIMESTAMP=$(date +"%Y%dm%-%H%M%S")
+TIMESTAMP=$(date +"%Y-%m-%d___%H-%M-%S")
 SESSION_LOG="${OUTPUT_DIR}/sysguard-${TIMESTAMP}.log"
 ALERTS_LOG="${OUTPUT_DIR}/alerts-${TIMESTAMP}.log"
 
@@ -184,7 +181,6 @@ function parse_arguments() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -h|--help)
-                display_banner
                 display_help
                 exit 0
                 ;;
@@ -478,14 +474,19 @@ function generate_summary() {
     
     echo "=== SYSGUARD ANALYSIS SUMMARY ===" > "$summary_file"
     echo "Generated on: $(date)" >> "$summary_file"
-    echo "Log files analyzed: ${LOG_FILES[*]}" >> "$summary_file"
     echo "" >> "$summary_file"
     
     # Count alerts by severity
-    local high_alerts=$(grep -c "\[ALERT:HIGH\]" "$ALERTS_LOG" || echo "0")
-    local medium_alerts=$(grep -c "\[ALERT:MEDIUM\]" "$ALERTS_LOG" || echo "0")
-    local low_alerts=$(grep -c "\[ALERT:LOW\]" "$ALERTS_LOG" || echo "0")
-    local total_alerts=$(high_alerts+medium_alerts+low_alerts)
+    local high_alerts=$(grep -c "\[ALERT:HIGH\]" "$ALERTS_LOG")
+    local medium_alerts=$(grep -c "\[ALERT:MEDIUM\]" "$ALERTS_LOG")
+    local low_alerts=$(grep -c "\[ALERT:LOW\]" "$ALERTS_LOG")
+
+    # Default to 0 if grep fails
+    high_alerts=${high_alerts:-0}
+    medium_alerts=${medium_alerts:-0}
+    low_alerts=${low_alerts:-0}
+
+    local total_alerts=$((high_alerts+medium_alerts+low_alerts))
     
     echo "=== ALERT SUMMARY ===" >> "$summary_file"
     echo "Total alerts: $total_alerts" >> "$summary_file"
@@ -495,7 +496,7 @@ function generate_summary() {
     echo "" >> "$summary_file"
     
     # List all HIGH severity alerts
-    if [[ $high_alerts -gt 0 ]]; then
+    if [ "$high_alerts" -gt 0 ]; then
         echo "=== HIGH SEVERITY ALERTS ===" >> "$summary_file"
         grep "\[ALERT:HIGH\]" "$ALERTS_LOG" | sed 's/\[ALERT:HIGH\] //g' >> "$summary_file"
         echo "" >> "$summary_file"
@@ -516,10 +517,7 @@ function generate_summary() {
         echo "$suspicious_users" >> "$summary_file"
         echo "" >> "$summary_file"
     fi
-    
-    echo "Full logs available at:" >> "$summary_file"
-    echo "  Session log: $SESSION_LOG" >> "$summary_file"
-    echo "  Alerts log: $ALERTS_LOG" >> "$summary_file"
+
     
     echo -e "${GREEN}${BOLD}Summary report generated:${NC} $summary_file"
     
@@ -532,7 +530,7 @@ function generate_summary() {
         echo -e "${RED}${BOLD}HIGH SEVERITY ALERTS DETECTED!${NC} Check the summary report."
     fi
     
-    echo -e "Full report: $summary_file"
+    log_message "INFO" "Full report: $summary_file"
 }
 
 
@@ -647,17 +645,15 @@ if __name__ == "__main__":
 EOL
 
     chmod +x "$python_script"
-    log_message "INFO" "Created Excel converter script at $python_script"
 }
 
 
 #Fonction pour generer le rapport excel
 
 function generate_excel_report() {
-    local summary_file="${OUTPUT_DIR}/sysguard-summary-${TIMESTAMP}.txt"
+    summary_file="${OUTPUT_DIR}/sysguard-summary-${TIMESTAMP}.txt"
     local excel_file="${OUTPUT_DIR}/sysguard-report-${TIMESTAMP}.xlsx"
     
-    log_message "INFO" "Generating Excel report"
     
     # Ensure Python script exists
     create_excel_converter
@@ -665,28 +661,8 @@ function generate_excel_report() {
     # Run Python script to generate Excel file
     if python3 "xlsx_writer.py" "$ALERTS_LOG" "$summary_file" "$excel_file"; then
         log_message "INFO" "Excel report generated: $excel_file"
-        echo -e "${GREEN}${BOLD}Excel report generated:${NC} $excel_file"
         
-        # Include Excel report in email if both are enabled
-        if [[ "$EMAIL_MODE" = true ]]; then
-            # Check if we can send attachments
-            if command -v mutt &> /dev/null; then
-                local email_body="
-SYSGUARD Security Analysis Report
-================================
-Time: $(date)
-Log files analyzed: ${LOG_FILES[*]}
-
-The complete security analysis report is attached.
-This is an automated message from SYSGUARD security monitoring tool.
-"
-                echo "$email_body" | mutt -s "$EMAIL_SUBJECT - Complete Report" -a "$excel_file" -- "$EMAIL_RECIPIENT"
-                log_message "INFO" "Excel report emailed to $EMAIL_RECIPIENT"
-            else
-                log_message "WARNING" "Cannot email Excel report: 'mutt' command not found"
-                echo -e "${YELLOW}${BOLD}Warning:${NC} Cannot email Excel report. Install 'mutt' for attachment support."
-            fi
-        fi
+        
     else
         log_message "ERROR" "Failed to generate Excel report"
         echo -e "${RED}${BOLD}Error:${NC} Failed to generate Excel report. Check Python dependencies."
@@ -700,57 +676,58 @@ This is an automated message from SYSGUARD security monitoring tool.
 function send_email_alert() {
     local severity="$1"
     local source="$2"
-    local message="$3"
-    
+    local message="$3" 
+
     # Skip if not HIGH severity and EMAIL_HIGH_ONLY is true
     if [[ "$EMAIL_HIGH_ONLY" = true && "$severity" != "HIGH" ]]; then
         return
     fi
-    
-    # Check if mail command exists
-    if ! command -v mail &> /dev/null; then
-        log_message "WARNING" "Cannot send email alert: 'mail' command not found"
-        return
-    fi
-    
+
     # Check if email is configured
     if [[ -z "$EMAIL_RECIPIENT" ]]; then
         return
     fi
-    
-    local email_body="
-SYSGUARD Security Alert
-=======================
-Severity: $severity
-Source: $source
-Time: $(date)
-Message: $message
 
-This is an automated message from SYSGUARD security monitoring tool.
-"
-    
-    # Send email
-    echo "$email_body" | mail -s "[$severity] $EMAIL_SUBJECT" "$EMAIL_RECIPIENT"
-    log_message "INFO" "Email alert sent to $EMAIL_RECIPIENT (Severity: $severity)"
+    TMP_MUTTRC=$(mktemp)
+    cat > "$TMP_MUTTRC" <<EOF
+# SMTP settings
+set smtp_url = "smtps://vawzen88@gmail.com@smtp.gmail.com:465/"
+set smtp_pass = "vuzx esot aogj icgl"
+
+# Alternative for port 587 with STARTTLS:
+# set smtp_url = "smtp://vawzen88@gmail.com@smtp.gmail.com:587/"
+# set smtp_pass = "vuzx esot aogj icgl"
+
+# Identity settings
+set use_from = yes
+set realname = "SysGuard"
+set from = "vawzen88@gmail.com"
+
+# SSL/TLS settings
+set ssl_starttls = yes
+set ssl_force_tls = yes
+set certificate_file = ~/.mutt/certificates
+EOF
 }
+
+
+
+
 
 
 
 #Fonction principale
 
 function main() {
+    install_packages
     display_banner
     check_root
-    check_dependencies  # Add this new function call
     parse_arguments "$@"
     init_output_dir
     
     log_message "INFO" "Starting SYSGUARD with parameters: FORK_MODE=$FORK_MODE, THREAD_MODE=$THREAD_MODE, EXCEL_MODE=$EXCEL_MODE, EMAIL_MODE=$EMAIL_MODE"
     log_message "INFO" "Log files to analyze: ${LOG_FILES[*]}"
     
-    if [[ "$EMAIL_MODE" = true ]]; then
-        log_message "INFO" "Email alerts will be sent to: $EMAIL_RECIPIENT"
-    fi
     
     #Fork mode
     if [[ "$FORK_MODE" = true ]]; then
@@ -765,6 +742,7 @@ function main() {
             analyze_log_file "$log_file"
         done
     fi
+
     
     generate_summary
     
@@ -772,9 +750,28 @@ function main() {
     if [[ "$EXCEL_MODE" = true ]]; then
         generate_excel_report
     fi
+    echo "$summary_file"
+    # Mail the alert
+    if [[ "$EMAIL_MODE" = true ]]; then
+        send_email_alert
+        mutt -s "SYSGUARD ALERT !" -F "$TMP_MUTTRC" -- "$EMAIL_RECIPIENT" < "$summary_file"
+
+        if [ $? -eq 0 ]; then
+            log_message "INFO" "Email alert sent to $EMAIL_RECIPIENT with attachment"
+        else
+            log_message "ERROR" "Failed to send email alert to $EMAIL_RECIPIENT"
+        fi
+
+    fi
+
+
+    ## Clean up the temp files
+    
+    rm -f "$TMP_MUTTRC"
+    rm -f "xlsx_writer.py"
     
     log_message "INFO" "SYSGUARD analysis completed"
-    echo -e "${GREEN}${BOLD}SYSGUARD analysis completed.${NC}"
+    echo "--------------------------------------------------------------------------------"
 }
 
 #Executer la fonction avec tous les argument
