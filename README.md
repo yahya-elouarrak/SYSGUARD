@@ -2,7 +2,7 @@
 
 <h3>SYSGUARD - System & Authentification Logs Analyzer & Security Monitor</h3>
 
-A Bash-based tool designed to monitor system logs, detect suspicious activities, and generate security reports. It analyzes SSH attempts, sudo abuse, authentication failures, and unusual login patterns, providing real-time alerts via email and detailed reports.
+A single-file Bash Script designed to monitor system logs, detect suspicious activities, and generate security reports. It analyzes SSH attempts, sudo abuse, authentication failures, and unusual login patterns, providing real-time alerts via email and detailed reports.
 
 ![image](https://github.com/user-attachments/assets/02a94113-59ec-494f-b024-9a303015719d)
 
