@@ -13,9 +13,9 @@ function display_banner() {
     echo "  ███████║   ██║   ███████║╚██████╔╝╚██████╔╝██║  ██║██║  ██║██████╔╝"
     echo "  ╚══════╝   ╚═╝   ╚══════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ "
     echo -e "-----------------------------------------------------------------"
-    echo -e "${BOLD}{GREEN}SYSGUARD: Syslog & Suspicious Activity Analyzer"
-    echo -e "${BOLD}{GREEN}Author: y4hya"
-    echo -e "${BOLD}{GREEN}Version: 1.0"
+    echo -e "${BOLD}${GREEN}SYSGUARD: Syslog & Suspicious Activity Analyzer"
+    echo -e "${BOLD}${GREEN}Author: y4hya"
+    echo -e "${BOLD}${GREEN}Version: 1.0"
     echo ""
 }
 
