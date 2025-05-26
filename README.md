@@ -7,10 +7,6 @@ A Bash-based tool designed to monitor system logs, detect suspicious activities,
 ![image](https://github.com/user-attachments/assets/02a94113-59ec-494f-b024-9a303015719d)
 
 
-
-
-</br>
-
 <h3>Features</h3>
 
 ✅ Real-Time Monitoring: Track log files continuously with configurable intervals.
