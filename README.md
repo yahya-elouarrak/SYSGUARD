@@ -20,6 +20,8 @@ SYSGUARD is a Bash-based tool designed to monitor system logs, detect suspicious
 
 ✅ Parallel Processing: Fork or thread modes for efficient log parsing.
 
+</br>
+
 <h3>Usage</h3>
 
 **Basic Analysis**
@@ -40,7 +42,10 @@ SYSGUARD is a Bash-based tool designed to monitor system logs, detect suspicious
 ./sysguard.sh -e -o /path/to/reports /var/log/auth.log
 ```
 
+</br>
+
 **Full Options**
+
 
 `-h, --help`
 
@@ -74,8 +79,10 @@ Enable real-time monitoring.
 
 Set check interval in seconds (default: 2).
 
+</br>
 
-**Output Structure 📂**
+<h3>Output Structure 📂</h3>
+
 
 Reports are saved in the specified output directory (default:  `sysguard_reports`):
 
@@ -89,3 +96,4 @@ sysguard_reports/
 ├── sysguard-summary-<TIMESTAMP>.txt  # Summary of findings
 
 └── sysguard-report-<TIMESTAMP>.xlsx  # Excel report (if enabled)
+
