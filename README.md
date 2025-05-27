@@ -25,6 +25,24 @@ A single-file Bash Script designed to monitor system logs, detect suspicious act
 
 </br>
 
+<h3>Installation</h3>
+
+1. Clone the repository:
+
+```
+git clone https://github.com/your-username/your-repo.git
+cd your-repo
+```
+
+
+3. Make the sysguard.sh script executable:
+
+```
+sudo chmod +x ./sysguard.sh
+```
+
+</br>
+
 <h3>Usage</h3>
 
 **Basic Analysis**
