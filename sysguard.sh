@@ -367,13 +367,13 @@ function process_realtime_line() {
     muttconf
     # Check for root login attempts
     if echo "$line" | grep -qEi 'session opened.*for user root'; then
-        echo "HIGH SEVERITY ALERT | Direct root login detected: " "$source_file" | mutt -s "SYSGUARD ALERT !" -F "$TMP_MUTTRC" -- "$EMAIL_RECIPIENT"
+        send_email "SYSGUARD ALERT !" "HIGH SEVERITY ALERT | Direct root login detected: $source_file" "$EMAIL_RECIPIENT"
     fi
     
     # Check for unusual login hours (11PM - 5AM)
     if echo "$line" | grep -qE 'session opened' && echo "$line" | grep -qE '(2[3]|[0-4]):[0-9]{2}:[0-9]{2}'; then
         local username=$(echo "$line" | grep -oE 'for user [^ ]+' | awk '{print $3}')
-        echo "MEDIUM SEVERITY ALERT | UNUSUAL_HOURS" "Login during unusual hours by user $username: $line" "$source_file" | mutt -s "SYSGUARD ALERT !" -F "$TMP_MUTTRC" -- "$EMAIL_RECIPIENT"
+        send_email "SYSGUARD ALERT !" "MEDIUM SEVERITY ALERT | UNUSUAL_HOURS | Login during unusual hours by user $username: $line" "$EMAIL_RECIPIENT"
     fi
 }
 
@@ -392,10 +392,10 @@ function check_ssh_brute_force() {
     echo "$current_count" > "$ssh_track_file"
     muttconf
     if [[ $current_count -ge 5 ]]; then
-        echo "HIGH SEVERITY ALERT | SSH_BRUTE_FORCE" "Brute force attack detected:  failed SSH attempts from IP $ip" "$source_file" | mutt -s "SYSGUARD ALERT !" -F "$TMP_MUTTRC" -- "$EMAIL_RECIPIENT"
+        send_email "SYSGUARD ALERT !" "HIGH SEVERITY ALERT | SSH_BRUTE_FORCE | Brute force attack detected: $current_count failed SSH attempts from IP $ip" "$EMAIL_RECIPIENT"
         echo "0" > "$ssh_track_file"
     elif [[ $current_count -ge 3 ]]; then
-        echo "MEDIUM SEVERITY ALERT | SSH_SUSPICIOUS | Multiple SSH failures from IP $ip " "$source_file" | mutt -s "SYSGUARD ALERT !" -F "$TMP_MUTTRC" -- "$EMAIL_RECIPIENT"
+        send_email "SYSGUARD ALERT !" "MEDIUM SEVERITY ALERT | SSH_SUSPICIOUS | Multiple SSH failures from IP $ip" "$EMAIL_RECIPIENT"
     fi
     
     find "${OUTPUT_DIR}/realtime_watch" -name "ssh_failures_*.count" -mmin +60 -delete 2>/dev/null
@@ -417,7 +417,7 @@ function check_sudo_abuse() {
     echo "$current_count" > "$sudo_track_file"
     muttconf
     if [[ $current_count -ge 3 ]]; then
-        echo "HIGH" "SUDO_ABUSE" "Potential sudo abuse: failed attempts by user $username" "$source_file" | mutt -s "SYSGUARD ALERT !" -F "$TMP_MUTTRC" -- "$EMAIL_RECIPIENT"
+        send_email "SYSGUARD ALERT !" "HIGH SEVERITY ALERT | SUDO_ABUSE | Potential sudo abuse: $current_count failed attempts by user $username" "$EMAIL_RECIPIENT"
         echo "0" > "$sudo_track_file"
     fi
     
@@ -868,28 +868,56 @@ function send_email_alert() {
 
 
 
+# Encryption key and IV (you should change these when setting up the script)
+ENCRYPTION_KEY="38e8d20e198ebe412960960d87af89e3"
+ENCRYPTION_IV="b4ffa208e7e07044"
+
+# Encrypted and base64-encoded mutt configuration
+ENCRYPTED_CONFIG="o4gp5IIQR3SlmlL7TX7cFyp0xVDAot5AbARIA3q5qICqfe3y+2oDvfL4LxS6O9JxdHjviTUm3yqwMjA1zZfMxgKXRYEUxokV7yFLy9lCfxN+kbOWDCZZv87/g11rhGcSeeO+8t/FeG+p+agEy2ifAflSmjj6P5LvrrbNNUed5kOsbcOLNSZgHo7szmnvNHDrsZ4c5nAXbP61xQgw2d5JQ7pKN3UB8UbsGCfT1I3OcUK2ECdFgIzSY2acXpUPigYRziftVnEDxTdclwXDYl/YB3m23DO3ELfbNRS11LgvdX0BriSHpyImn3HARv9/5ZFK3iDwWIaeRienctk/6a+Hfzwgx4ubM9QEAaY2zeLN7renfD4omYhAj+Li4ul73VphYmaeJVtJxsSxUcFDmdogEeKT+DBnTwBi1QlYNOZBj2WO2c77MschzP+g4cp42GCnkeNR23/t+PV/mdyVM5k4+fB0KjeYV3CZ1ec/omEwumc93wnEHuDu0PSuNWrOhY0wP3B2TrHUawEbgLeDkplGytua4kADVgfQSKvfFHWFeZQ="
+
+function decrypt_config() {
+    local encrypted_data="$1"
+    echo "$encrypted_data" | base64 -d | openssl enc -aes-256-cbc -d -K "$ENCRYPTION_KEY" -iv "$ENCRYPTION_IV" 2>/dev/null
+}
+
 #Mutt conf file
-function muttconf(){
-	TMP_MUTTRC=$(mktemp)
-    cat > "$TMP_MUTTRC" <<EOF
-# SMTP settings
-set smtp_url = "smtps://vawzen88@gmail.com@smtp.gmail.com:465/"
-set smtp_pass = "vuzx esot aogj icgl"
+function muttconf() {
+    # Check if configuration is already set up
+    if [ ! -f ~/.sysguard/.mutt_configured ]; then
+        # Create secure directory for configuration
+        install -d -m 700 ~/.sysguard
+        
+        # Decrypt and write configuration
+        decrypt_config "$ENCRYPTED_CONFIG" > ~/.sysguard/mutt_config
+        
+        if [ $? -ne 0 ]; then
+            log_message "ERROR" "Failed to decrypt email configuration"
+            rm -f ~/.sysguard/mutt_config
+            exit 1
+        fi
+        
+        # Set secure permissions
+        chmod 600 ~/.sysguard/mutt_config
+        
+        # Create certificates directory
+        install -d -m 700 ~/.sysguard/certificates
 
-# Alternative for port 587 with STARTTLS:
-# set smtp_url = "smtp://vawzen88@gmail.com@smtp.gmail.com:587/"
-# set smtp_pass = "vuzx esot aogj icgl"
+        # Create marker file to indicate configuration is complete
+        touch ~/.sysguard/.mutt_configured
+    fi
+}
 
-# Identity settings
-set use_from = yes
-set realname = "SysGuard"
-set from = "vawzen88@gmail.com"
+# Update send_email function to use the config directly
+function send_email() {
+    local subject="$1"
+    local body="$2"
+    local recipient="$3"
 
-# SSL/TLS settings
-set ssl_starttls = yes
-set ssl_force_tls = yes
-set certificate_file = ~/.mutt/certificates
-EOF
+    if [ ! -f ~/.sysguard/.mutt_configured ]; then
+        muttconf
+    fi
+
+    echo "$body" | mutt -s "$subject" -F ~/.sysguard/mutt_config -- "$recipient"
 }
 
 
@@ -941,22 +969,16 @@ function main() {
     # Mail the alert
     if [[ "$EMAIL_MODE" = true ]]; then
         muttconf
-        mutt -s "SYSGUARD ALERT !" -F "$TMP_MUTTRC" -- "$EMAIL_RECIPIENT" < "$summary_file"
+        send_email "SYSGUARD ALERT !" "$(cat "$summary_file")" "$EMAIL_RECIPIENT"
 
         if [ $? -eq 0 ]; then
-            log_message "INFO" "Email alert sent to $EMAIL_RECIPIENT with attachment"
+            log_message "INFO" "Email alert sent to $EMAIL_RECIPIENT"
         else
             log_message "ERROR" "Failed to send email alert to $EMAIL_RECIPIENT"
         fi
 
     fi
 
-
-    ## Clean up the temp files
-    
-    rm -f "$TMP_MUTTRC"
-    rm -f xlsx_writer.py
-    
     log_message "INFO" "SYSGUARD analysis completed"
     echo "--------------------------------------------------------------------------------"
 }
