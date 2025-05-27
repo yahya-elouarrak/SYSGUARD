@@ -25,24 +25,44 @@ A single-file Bash Script designed to monitor system logs, detect suspicious act
 
 </br>
 
+<h3>Installation</h3>
+
+1. Clone the repository:
+
+```
+git clone https://github.com/yahya-elouarrak/SYSGUARD.git
+cd SYSGUARD
+```
+
+
+3. Make the sysguard.sh script executable:
+
+```
+sudo chmod +x ./sysguard.sh
+```
+
+</br>
+
 <h3>Usage</h3>
+
+**⚠️ Important: Run the script with admin privileges using sudo to ensure proper permissions.**
 
 **Basic Analysis**
 
 ```
-./sysguard.sh /var/log/auth.log /var/log/syslog
+sudo ./sysguard.sh /var/log/auth.log /var/log/syslog
 ```
 
 **Real-Time Monitoring**
 
 ```
-./sysguard.sh --realtime -m your-email@example.com
+sudo ./sysguard.sh --realtime -m your-email@example.com
 ```
 
 **Generate Excel Report**
 
 ```
-./sysguard.sh -e -o /path/to/reports /var/log/auth.log
+sudo ./sysguard.sh -e -o /path/to/reports /var/log/auth.log
 ```
 
 </br>
