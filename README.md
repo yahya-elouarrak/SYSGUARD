@@ -31,7 +31,7 @@ A single-file Bash Script designed to monitor system logs, detect suspicious act
 
 ```
 git clone https://github.com/yahya-elouarrak/SYSGUARD.git
-cd your-repo
+cd SYSGUARD
 ```
 
 
