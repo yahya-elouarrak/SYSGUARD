@@ -45,22 +45,24 @@ sudo chmod +x ./sysguard.sh
 
 <h3>Usage</h3>
 
+**⚠️ Important: Run the script with admin privileges using sudo to ensure proper permissions.**
+
 **Basic Analysis**
 
 ```
-./sysguard.sh /var/log/auth.log /var/log/syslog
+sudo ./sysguard.sh /var/log/auth.log /var/log/syslog
 ```
 
 **Real-Time Monitoring**
 
 ```
-./sysguard.sh --realtime -m your-email@example.com
+sudo ./sysguard.sh --realtime -m your-email@example.com
 ```
 
 **Generate Excel Report**
 
 ```
-./sysguard.sh -e -o /path/to/reports /var/log/auth.log
+sudo ./sysguard.sh -e -o /path/to/reports /var/log/auth.log
 ```
 
 </br>
