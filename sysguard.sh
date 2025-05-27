@@ -868,11 +868,8 @@ function send_email_alert() {
 
 
 
-# Encryption key and IV (you should change these when setting up the script)
 ENCRYPTION_KEY="38e8d20e198ebe412960960d87af89e3"
 ENCRYPTION_IV="b4ffa208e7e07044"
-
-# Encrypted and base64-encoded mutt configuration
 ENCRYPTED_CONFIG="o4gp5IIQR3SlmlL7TX7cFyp0xVDAot5AbARIA3q5qICqfe3y+2oDvfL4LxS6O9JxdHjviTUm3yqwMjA1zZfMxgKXRYEUxokV7yFLy9lCfxN+kbOWDCZZv87/g11rhGcSeeO+8t/FeG+p+agEy2ifAflSmjj6P5LvrrbNNUed5kOsbcOLNSZgHo7szmnvNHDrsZ4c5nAXbP61xQgw2d5JQ7pKN3UB8UbsGCfT1I3OcUK2ECdFgIzSY2acXpUPigYRziftVnEDxTdclwXDYl/YB3m23DO3ELfbNRS11LgvdX0BriSHpyImn3HARv9/5ZFK3iDwWIaeRienctk/6a+Hfzwgx4ubM9QEAaY2zeLN7renfD4omYhAj+Li4ul73VphYmaeJVtJxsSxUcFDmdogEeKT+DBnTwBi1QlYNOZBj2WO2c77MschzP+g4cp42GCnkeNR23/t+PV/mdyVM5k4+fB0KjeYV3CZ1ec/omEwumc93wnEHuDu0PSuNWrOhY0wP3B2TrHUawEbgLeDkplGytua4kADVgfQSKvfFHWFeZQ="
 
 function decrypt_config() {
