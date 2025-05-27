@@ -30,7 +30,7 @@ A single-file Bash Script designed to monitor system logs, detect suspicious act
 1. Clone the repository:
 
 ```
-git clone https://github.com/your-username/your-repo.git
+git clone https://github.com/yahya-elouarrak/SYSGUARD.git
 cd your-repo
 ```
 
