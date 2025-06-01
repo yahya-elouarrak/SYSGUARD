@@ -58,7 +58,9 @@ NC='\033[0m'
 
 FORK_MODE=false
 THREAD_MODE=false
+RESTORE_MODE=false
 LOG_FILES=()
+CUSTOM_LOG_DIR=""
 OUTPUT_DIR="$(pwd)/sysguard_reports"
 TIMESTAMP=$(date +"%Y-%d-%m___%H-%M-%S")
 SESSION_LOG="${OUTPUT_DIR}/sysguard-${TIMESTAMP}.log"
@@ -84,7 +86,7 @@ function display_help() {
     echo "  -h, --help            Display this help message"
     echo "  -f, --fork            Fork to analyze multiple files in parallel"
     echo "  -t, --thread          Spawn a thread per detection rule"
-    echo "  -o, --output DIR      Specify output directory (default: current-directory/sysguard)"
+    echo "  -l, --output DIR      Specify output directory (default: current-directory/sysguard)"
     echo "  -e, --excel           Generate Excel report"
     echo "  -m, --email EMAIL     Send alert notifications to specified email"
     echo "  --realtime            Start real-time log monitoring"
@@ -199,7 +201,15 @@ function parse_arguments() {
                 THREAD_MODE=true
                 shift
                 ;;
-            -o|--output)
+            -s|--subshell)
+                SUBSHELL_MODE=true
+                shift
+                ;;
+            -r|--restore)
+                RESTORE_MODE=true
+                restore_defaults
+                ;;
+            -l|--output)
                 if [[ -n "$2" && "$2" != -* ]]; then
                     OUTPUT_DIR="$2"
                     shift 2
@@ -919,61 +929,65 @@ function send_email() {
 
 
 
+
+
+
+
+
+
 #Fonction principale
 
 function main() {
+    # Load saved configuration if it exists
+    load_configuration
+    
     install_packages
     display_banner
     check_root
     parse_arguments "$@"
     init_output_dir
 
-    # REALTIME CHECK:
+      # REALTIME CHECK:
     if [[ "$REALTIME_MODE" = true ]]; then
         log_message "INFO" "Starting SYSGUARD in REAL-TIME mode"
-        
-        # Start real-time monitoring (signal handlers are set inside the function)
-        start_realtime_watcher
+        if [[ "$SUBSHELL_MODE" = true ]]; then
+            log_message "INFO" "Running real-time watcher in subshell (PID: $$)"
+            (
+                export SYSGUARD_SUBSHELL=true
+                start_realtime_watcher
+            )
+            # Vérifier si le subshell a réussi
+            if [[ $? -ne 0 ]]; then
+                log_message "ERROR" "Subshell execution failed"
+                exit 1
+            fi
+        else
+            start_realtime_watcher
+        fi
         return 0
     fi
     
-    log_message "INFO" "Starting SYSGUARD with parameters: FORK_MODE=$FORK_MODE, THREAD_MODE=$THREAD_MODE, EXCEL_MODE=$EXCEL_MODE, EMAIL_MODE=$EMAIL_MODE"
+    log_message "INFO" "Starting SYSGUARD with parameters: FORK_MODE=$FORK_MODE, THREAD_MODE=$THREAD_MODE, SUBSHELL_MODE=$SUBSHELL_MODE"
     log_message "INFO" "Log files to analyze: ${LOG_FILES[*]}"
     
-    
-    #Fork mode
-    if [[ "$FORK_MODE" = true ]]; then
-        # Process each log file in parallel
-        for log_file in "${LOG_FILES[@]}"; do
-            analyze_log_file "$log_file" &
-        done
-        wait  # Wait for all forks to complete
-    else
-        # Process each log file sequentially
-        for log_file in "${LOG_FILES[@]}"; do
-            analyze_log_file "$log_file"
-        done
-    fi
-
-    
-    generate_summary
-    
-    # Generate Excel report if enabled
-    if [[ "$EXCEL_MODE" = true ]]; then
-        generate_excel_report
-    fi
-
-    # Mail the alert
-    if [[ "$EMAIL_MODE" = true ]]; then
-        muttconf
-        send_email "SYSGUARD ALERT !" "$(cat "$summary_file")" "$EMAIL_RECIPIENT"
-
-        if [ $? -eq 0 ]; then
-            log_message "INFO" "Email alert sent to $EMAIL_RECIPIENT"
+    if [[ "$SUBSHELL_MODE" = true ]]; then
+        log_message "INFO" "Running in subshell mode (PID: $$)"
+        (
+            export SYSGUARD_SUBSHELL=true
+            # Ajout d'un trap pour gérer les signaux dans le subshell
+            trap 'log_message "ERROR" "Subshell received interrupt signal"; exit 1' INT TERM
+            process_files
+        )
+        # Vérification du code de retour
+        subshell_exit_code=$?
+        if [[ $subshell_exit_code -ne 0 ]]; then
+            log_message "ERROR" "Subshell execution failed with code $subshell_exit_code"
+            exit $subshell_exit_code
         else
-            log_message "ERROR" "Failed to send email alert to $EMAIL_RECIPIENT"
+            log_message "INFO" "Subshell completed successfully"
         fi
-
+    else
+        process_files
     fi
 
     log_message "INFO" "SYSGUARD analysis completed"
