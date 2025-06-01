@@ -1,6 +1,8 @@
 #!/bin/bash
+
 #Clean up
 rm -r sysguard_reports
+
 
 #Fonction pour afficher les infos du script
 
@@ -59,10 +61,8 @@ NC='\033[0m'
 FORK_MODE=false
 THREAD_MODE=false
 LOG_FILES=()
-OUTPUT_DIR="$(pwd)/sysguard_reports"
+OUTPUT_DIR=""  # Will be set after parsing arguments
 TIMESTAMP=$(date +"%Y-%d-%m___%H-%M-%S")
-SESSION_LOG="${OUTPUT_DIR}/sysguard-${TIMESTAMP}.log"
-ALERTS_LOG="${OUTPUT_DIR}/alerts-${TIMESTAMP}.log"
 
 EMAIL_MODE=false
 EMAIL_RECIPIENT=""
@@ -251,6 +251,15 @@ function parse_arguments() {
         esac
     done
     
+    # If output directory not specified, set default
+    if [[ -z "$OUTPUT_DIR" ]]; then
+        OUTPUT_DIR="$(pwd)/sysguard_reports"
+    fi
+
+    # Set session and alert log paths after OUTPUT_DIR is finalized
+    SESSION_LOG="${OUTPUT_DIR}/sysguard-${TIMESTAMP}.log"
+    ALERTS_LOG="${OUTPUT_DIR}/alerts-${TIMESTAMP}.log"
+
     # If no log files specified, use defaults
     if [[ ${#LOG_FILES[@]} -eq 0 ]]; then
         if [[ -f "/var/log/auth.log" ]]; then
@@ -975,6 +984,8 @@ function main() {
         fi
 
     fi
+
+    rm -f "xlsx_writer.py"
 
     log_message "INFO" "SYSGUARD analysis completed"
     echo "--------------------------------------------------------------------------------"
